@@ -13,60 +13,33 @@ import { motion, AnimatePresence } from 'motion/react';
 import { checklistData } from './data';
 import { ChecklistState, Phase, ProspectingEntry } from './types';
 import ChecklistView from './components/ChecklistView';
-import ProspectingView from './components/ProspectingView';
-import DatabaseView from './components/DatabaseView';
 import { auth, db, loginWithGoogle, logout, OperationType, handleFirestoreError } from './firebase';
 import { User } from 'firebase/auth';
 import { 
   doc, 
   onSnapshot, 
   setDoc, 
-  serverTimestamp, 
-  collection, 
-  query, 
-  where, 
-  orderBy,
-  addDoc
+  serverTimestamp
 } from 'firebase/firestore';
-
-type Tab = 'checklist' | 'prospecting' | 'database';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [connStatus, setConnStatus] = useState<'testing' | 'ok' | 'offline'>('testing');
-  const [activeTab, setActiveTab] = useState<Tab>('checklist');
   
-  const [completedTasks, setCompletedTasks] = useState<ChecklistState>({});
-  const [prospections, setProspections] = useState<ProspectingEntry[]>([]);
+  const [completedTasks, setCompletedTasks] = useState<ChecklistState>(() => {
+    // Inicializar desde localStorage como respaldo
+    const saved = localStorage.getItem('pintura_labranza_progress');
+    return saved ? JSON.parse(saved) : {};
+  });
   const [activePhaseIndex, setActivePhaseIndex] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Auth Listener
+  // Guardar en localStorage cada vez que cambie
   useEffect(() => {
-    // Check connection first
-    import('./firebase').then(async (m) => {
-      try {
-        await m.dbConnection; // I will export this
-        setConnStatus('ok');
-      } catch (e) {
-        setConnStatus('offline');
-      }
-    });
-
-    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        setLoginError(null);
-        setAuthLoading(false);
-      } else {
-        // En lugar de login silencioso, dejamos que el usuario haga clic en el botón
-        setAuthLoading(false);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+    localStorage.setItem('pintura_labranza_progress', JSON.stringify(completedTasks));
+  }, [completedTasks]);
 
   const handleLogin = async () => {
     setAuthLoading(true);
@@ -75,7 +48,13 @@ export default function App() {
       await loginWithGoogle();
     } catch (error: any) {
       console.error("Auth Error:", error);
-      setLoginError(`Error de autenticación: ${error.message || 'Error desconocido'}`);
+      if (error.code === 'auth/unauthorized-domain') {
+        setLoginError('Dominio no autorizado. Debes añadir la URL de la app en la Consola de Firebase > Auth > Settings > Authorized Domains.');
+      } else if (error.code === 'auth/admin-restricted-operation') {
+        setLoginError('Operación restringida. Asegúrate de que el método de inicio de sesión esté habilitado en Firebase.');
+      } else {
+        setLoginError(`Error de autenticación: ${error.message || 'Error desconocido'}`);
+      }
       setAuthLoading(false);
     }
   };
@@ -87,61 +66,30 @@ export default function App() {
     const docRef = doc(db, 'userProgress', user.uid);
     return onSnapshot(docRef, (snapshot) => {
       if (snapshot.exists()) {
-        setCompletedTasks(snapshot.data().completedTasks || {});
+        const remoteTasks = snapshot.data().completedTasks || {};
+        // Fusionar con local, priorizando el más completo o reciente si fuera necesario
+        setCompletedTasks(prev => ({ ...prev, ...remoteTasks }));
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `userProgress/${user.uid}`);
     });
   }, [user]);
 
-  // Sync Prospections from Firestore (User-specific)
-  useEffect(() => {
-    if (!user) return;
-
-    const q = query(
-      collection(db, 'prospections'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    return onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id
-      })) as ProspectingEntry[];
-      setProspections(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'prospections');
-    });
-  }, [user]);
-
   const toggleTask = async (taskId: string) => {
-    if (!user) return;
     const newTasks = { ...completedTasks, [taskId]: !completedTasks[taskId] };
+    setCompletedTasks(newTasks);
     
-    try {
-      await setDoc(doc(db, 'userProgress', user.uid), {
-        userId: user.uid,
-        completedTasks: newTasks,
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `userProgress/${user.uid}`);
-    }
-  };
-
-  const saveProspecting = async (entry: Omit<ProspectingEntry, 'id' | 'createdAt'>) => {
-    if (!user) return;
-    
-    try {
-      await addDoc(collection(db, 'prospections'), {
-        ...entry,
-        userId: user.uid,
-        createdAt: serverTimestamp()
-      });
-      setActiveTab('database');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'prospections');
+    if (user) {
+      try {
+        await setDoc(doc(db, 'userProgress', user.uid), {
+          userId: user.uid,
+          completedTasks: newTasks,
+          updatedAt: serverTimestamp()
+        });
+      } catch (error) {
+        // Silently fail or log, since we have localStorage
+        console.error("Firestore sync failed, using localStorage");
+      }
     }
   };
 
@@ -273,7 +221,7 @@ export default function App() {
                       FERRETERÍA <span className="text-brand">LABRANZA</span>
                     </h1>
                     <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-bold">
-                      Panel de Control
+                      Checklist Pro
                     </p>
                   </div>
                   <button 
@@ -285,80 +233,46 @@ export default function App() {
                 </div>
               </div>
 
-              {/* View Switches */}
-              <div className="px-4 py-4 space-y-1 shrink-0 border-b border-slate-800/50">
-                <p className="px-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Secciones</p>
-                <button
-                  onClick={() => { setActiveTab('checklist'); setIsSidebarOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${activeTab === 'checklist' ? 'bg-slate-800 text-brand' : 'text-slate-400 hover:text-white'}`}
-                >
-                  <ListTodo size={18} />
-                  <span className="text-sm font-semibold">Checklist</span>
-                </button>
-                <button
-                  onClick={() => { setActiveTab('prospecting'); setIsSidebarOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${activeTab === 'prospecting' ? 'bg-slate-800 text-brand' : 'text-slate-400 hover:text-white'}`}
-                >
-                  <ClipboardList size={18} />
-                  <span className="text-sm font-semibold">Nueva Prospección</span>
-                </button>
-                <button
-                  onClick={() => { setActiveTab('database'); setIsSidebarOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${activeTab === 'database' ? 'bg-slate-800 text-brand' : 'text-slate-400 hover:text-white'}`}
-                >
-                  <Database size={18} />
-                  <span className="text-sm font-semibold">Base de Datos</span>
-                </button>
-              </div>
-
               <div className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest shrink-0">
-                {activeTab === 'checklist' ? 'Fases de Apertura' : 'Información'}
+                Fases de Apertura
               </div>
 
               <nav className="flex-1 overflow-y-auto py-2">
-                {activeTab === 'checklist' ? (
-                  checklistData.map((phase, idx) => {
-                    const progress = getPhaseProgress(phase);
-                    const isActive = activePhaseIndex === idx;
-                    return (
-                      <button
-                        key={phase.id}
-                        onClick={() => {
-                          setActivePhaseIndex(idx);
-                          setIsSidebarOpen(false);
-                        }}
-                        className={`w-full flex items-center px-6 py-4 transition-all border-l-4 ${
-                          isActive 
-                            ? 'bg-brand text-white border-brand-dark' 
-                            : 'hover:bg-slate-800 border-transparent'
-                        }`}
-                      >
-                        <span className={`w-6 h-6 rounded flex items-center justify-center text-xs mr-3 font-bold shrink-0 ${
-                          isActive ? 'bg-brand-dark' : 'bg-slate-700'
-                        }`}>
-                          0{idx + 1}
+                {checklistData.map((phase, idx) => {
+                  const progress = getPhaseProgress(phase);
+                  const isActive = activePhaseIndex === idx;
+                  return (
+                    <button
+                      key={phase.id}
+                      onClick={() => {
+                        setActivePhaseIndex(idx);
+                        setIsSidebarOpen(false);
+                      }}
+                      className={`w-full flex items-center px-6 py-4 transition-all border-l-4 ${
+                        isActive 
+                          ? 'bg-brand text-white border-brand-dark' 
+                          : 'hover:bg-slate-800 border-transparent'
+                      }`}
+                    >
+                      <span className={`w-6 h-6 rounded flex items-center justify-center text-xs mr-3 font-bold shrink-0 ${
+                        isActive ? 'bg-brand-dark' : 'bg-slate-700'
+                      }`}>
+                        0{idx + 1}
+                      </span>
+                      <div className="flex flex-col text-left min-w-0">
+                        <span className={`text-sm font-semibold truncate ${isActive ? 'text-white' : 'text-slate-300'}`}>
+                          {phase.title.replace(/FASE \d+ — /, '')}
                         </span>
-                        <div className="flex flex-col text-left min-w-0">
-                          <span className={`text-sm font-semibold truncate ${isActive ? 'text-white' : 'text-slate-300'}`}>
-                            {phase.title.replace(/FASE \d+ — /, '')}
-                          </span>
-                          <span className={`text-[10px] ${isActive ? 'opacity-70' : 'text-slate-500'}`}>
-                            {phase.subtitle}
-                          </span>
-                        </div>
-                        {progress === 100 && !isActive && (
-                          <CheckCircle2 className="w-3 h-3 ml-auto text-emerald-500 shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })
-                ) : (
-                  <div className="px-6 text-xs text-slate-400 leading-relaxed italic">
-                    {activeTab === 'prospecting' 
-                      ? 'Rellena este formulario durante tus visitas para identificar la demanda real de los talleres.'
-                      : 'Aquí puedes ver el consolidado de todos los talleres identificados y su estado actual.'}
-                  </div>
-                )}
+                        <span className={`text-[10px] ${isActive ? 'opacity-70' : 'text-slate-500'}`}>
+                          {phase.subtitle}
+                        </span>
+                      </div>
+                      {progress === 100 && !isActive && (
+                        <CheckCircle2 className="w-3 h-3 ml-auto text-emerald-500 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
               </nav>
 
               <div className="p-6 bg-slate-950 shrink-0">
@@ -408,24 +322,12 @@ export default function App() {
         {/* Content Wrapper */}
         <div className="flex-1 flex flex-col min-w-0 bg-slate-50 overflow-hidden">
           <main className="flex-1 overflow-y-auto relative">
-            {activeTab === 'checklist' && (
-              <ChecklistView 
-                activePhaseIndex={activePhaseIndex}
-                setActivePhaseIndex={setActivePhaseIndex}
-                completedTasks={completedTasks}
-                toggleTask={toggleTask}
-              />
-            )}
-            {activeTab === 'prospecting' && (
-              <div className="p-6 lg:p-10">
-                <ProspectingView onSave={saveProspecting} />
-              </div>
-            )}
-            {activeTab === 'database' && (
-              <div className="p-6 lg:px-10 py-10 max-w-6xl mx-auto w-full">
-                <DatabaseView prospections={prospections} />
-              </div>
-            )}
+            <ChecklistView 
+              activePhaseIndex={activePhaseIndex}
+              setActivePhaseIndex={setActivePhaseIndex}
+              completedTasks={completedTasks}
+              toggleTask={toggleTask}
+            />
           </main>
         </div>
       </div>
