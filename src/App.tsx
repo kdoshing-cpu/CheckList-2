@@ -25,6 +25,7 @@ import {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [localMode, setLocalMode] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [connStatus, setConnStatus] = useState<'testing' | 'ok' | 'offline'>('testing');
   
@@ -54,6 +55,11 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  const continueInLocalMode = () => {
+    setLocalMode(true);
+    setLoginError(null);
+  };
 
   // Guardar en localStorage cada vez que cambie
   useEffect(() => {
@@ -124,9 +130,9 @@ export default function App() {
     return allTasks.length > 0 ? (completed / allTasks.length) * 100 : 0;
   }, [completedTasks]);
 
-  if (authLoading || !user) {
+  if (authLoading || (!user && !localMode)) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 p-6">
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 p-6 overflow-y-auto">
         <motion.div 
           animate={{ rotate: 360 }}
           transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
@@ -146,55 +152,58 @@ export default function App() {
             Verificando sesión...
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-6">
-            <button 
-              onClick={handleLogin}
-              className="flex items-center gap-3 px-8 py-4 bg-white text-slate-700 font-bold rounded-2xl shadow-xl shadow-slate-200 border border-slate-100 hover:scale-105 transition-all active:scale-95"
-            >
-              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-              Ingresar con Google
-            </button>
+          <div className="flex flex-col items-center gap-6 w-full max-w-md">
+            <div className="flex flex-col sm:flex-row gap-4 w-full">
+              <button 
+                onClick={handleLogin}
+                className="flex-1 flex items-center justify-center gap-3 px-6 py-4 bg-white text-slate-700 font-bold rounded-2xl shadow-xl shadow-slate-200 border border-slate-100 hover:scale-105 transition-all active:scale-95"
+              >
+                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
+                Ingresar con Google
+              </button>
+              
+              <button 
+                onClick={continueInLocalMode}
+                className="flex-1 px-6 py-4 bg-slate-800 text-white font-bold rounded-2xl shadow-xl shadow-slate-900/10 hover:scale-105 transition-all active:scale-95 border border-slate-800"
+              >
+                Continuar sin Cuenta
+              </button>
+            </div>
             
             {loginError && (
-              <div className="flex flex-col items-center gap-4">
-                <p className="text-red-500 font-bold text-xs bg-red-50 px-4 py-3 rounded-xl border border-red-100 max-w-sm text-center leading-relaxed">
+              <div className="flex flex-col items-center gap-4 w-full">
+                <p className="text-red-500 font-bold text-xs bg-red-50 px-4 py-3 rounded-xl border border-red-100 w-full text-center leading-relaxed">
                   {loginError}
                 </p>
-                <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 max-w-sm text-center">
-                  <p className="text-orange-800 text-[10px] font-bold uppercase tracking-widest mb-2">Importante</p>
+                <div className="bg-orange-50 p-5 rounded-2xl border border-orange-100 w-full">
+                  <p className="text-orange-800 text-[10px] font-bold uppercase tracking-widest mb-3">Guía de Configuración</p>
                   <p className="text-orange-700 text-xs font-medium leading-relaxed mb-4">
-                    Si el error persiste, intenta abrir la aplicación en una <strong>nueva pestaña</strong> o asegúrate de que el acceso a Google esté habilitado en este proyecto.
+                    Para activar la sincronización, añade este dominio en tu Consola de Firebase:<br/>
+                    <code className="bg-white/50 px-2 py-1 rounded mt-1 block font-mono text-[10px] break-all border border-orange-200/50">
+                      {window.location.hostname}
+                    </code>
                   </p>
                   <a 
                     href={window.location.href} 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="inline-block px-4 py-2 bg-orange-100 text-orange-800 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-orange-200 transition-colors"
+                    className="inline-block w-full text-center px-4 py-3 bg-brand text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-brand-dark transition-all shadow-lg shadow-brand/20"
                   >
-                    Abrir en nueva pestaña
+                    Intentar en Nueva Pestaña
                   </a>
                 </div>
               </div>
             )}
             
             {!loginError && (
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-col items-center gap-3">
                 <p className="text-slate-400 text-[10px] uppercase tracking-widest font-bold">
-                  Acceso Seguro & Sincronizado
+                  Acceso Seguro {localMode ? '& Modo Local' : '& Sincronizado'}
                 </p>
-                <div className={`text-[9px] font-bold uppercase tracking-tighter flex items-center gap-1.5 px-2 py-0.5 rounded-full ${
-                  connStatus === 'ok' ? 'text-emerald-500 bg-emerald-50' : 
-                  connStatus === 'offline' ? 'text-red-500 bg-red-50' : 
-                  'text-slate-400 bg-slate-100'
-                }`}>
-                  <div className={`w-1 h-1 rounded-full ${
-                    connStatus === 'ok' ? 'bg-emerald-500 animate-pulse' : 
-                    connStatus === 'offline' ? 'bg-red-500' : 
-                    'bg-slate-400 animate-bounce'
-                  }`} />
-                  {connStatus === 'ok' ? 'Servidor Conectado' : 
-                   connStatus === 'offline' ? 'Error de Conexión (Offline)' : 
-                   'Verificando Red...'}
+                <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 max-w-sm">
+                  <p className="text-blue-600 text-[10px] font-medium text-center italic">
+                    Usa "Continuar sin Cuenta" si el acceso con Google falla por configuración del servidor. Tus datos se guardarán localmente.
+                  </p>
                 </div>
               </div>
             )}
@@ -309,27 +318,42 @@ export default function App() {
                 </div>
                 
                 <div className="mt-6 flex items-center gap-3 px-2 border-t border-slate-800 pt-6">
-                  <div className="w-8 h-8 rounded-full overflow-hidden bg-brand ring-2 ring-slate-800">
-                    {user?.photoURL ? (
-                      <img src={user.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-white font-bold text-xs">
-                        {user?.displayName?.substring(0, 1) || user?.email?.substring(0, 1) || '?'}
-                      </div>
-                    )}
-                  </div>
+                  {localMode && !user ? (
+                    <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-slate-400">
+                      <ListTodo size={14} />
+                    </div>
+                  ) : (
+                    <div className="w-8 h-8 rounded-full overflow-hidden bg-brand ring-2 ring-slate-800">
+                      {user?.photoURL ? (
+                        <img src={user.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-white font-bold text-xs">
+                          {user?.displayName?.substring(0, 1) || user?.email?.substring(0, 1) || '?'}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold truncate text-slate-200">
-                      {user?.displayName || 'Usuario'}
+                      {user?.displayName || (localMode ? 'Modo Local' : 'Usuario')}
                     </p>
-                    <button 
-                      onClick={() => logout()}
-                      className="text-[10px] font-bold text-slate-500 hover:text-brand uppercase tracking-tighter mt-0.5 transition-colors"
-                    >
-                      Cerrar Sesión
-                    </button>
-                    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-tighter mt-0.5">
-                      Sincronización Activa
+                    {user ? (
+                      <button 
+                        onClick={() => logout()}
+                        className="text-[10px] font-bold text-slate-500 hover:text-brand uppercase tracking-tighter mt-0.5 transition-colors"
+                      >
+                        Cerrar Sesión
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => { setLocalMode(false); setAuthLoading(false); }}
+                        className="text-[10px] font-bold text-brand hover:text-white uppercase tracking-tighter mt-0.5 transition-colors"
+                      >
+                        Iniciar Sesión
+                      </button>
+                    )}
+                    <p className={`text-[10px] font-bold uppercase tracking-tighter mt-0.5 ${user ? 'text-emerald-500' : 'text-orange-500'}`}>
+                      {user ? 'Sincronización Activa' : 'Sin Sincronización'}
                     </p>
                   </div>
                 </div>
