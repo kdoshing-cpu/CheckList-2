@@ -36,6 +36,25 @@ export default function App() {
   const [activePhaseIndex, setActivePhaseIndex] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // Auth Listener & Connection
+  useEffect(() => {
+    // Check connection
+    import('./firebase').then(async (m) => {
+      try {
+        await m.dbConnection;
+        setConnStatus('ok');
+      } catch (e) {
+        setConnStatus('offline');
+      }
+    });
+
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Guardar en localStorage cada vez que cambie
   useEffect(() => {
     localStorage.setItem('pintura_labranza_progress', JSON.stringify(completedTasks));
