@@ -35,6 +35,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [connStatus, setConnStatus] = useState<'testing' | 'ok' | 'offline'>('testing');
   const [activeTab, setActiveTab] = useState<Tab>('checklist');
   
   const [completedTasks, setCompletedTasks] = useState<ChecklistState>({});
@@ -44,6 +45,16 @@ export default function App() {
 
   // Auth Listener
   useEffect(() => {
+    // Check connection first
+    import('./firebase').then(async (m) => {
+      try {
+        await m.dbConnection; // I will export this
+        setConnStatus('ok');
+      } catch (e) {
+        setConnStatus('offline');
+      }
+    });
+
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
@@ -178,14 +189,48 @@ export default function App() {
             </button>
             
             {loginError && (
-              <p className="text-red-500 font-bold text-xs bg-red-50 px-4 py-2 rounded-lg border border-red-100">
-                {loginError}
-              </p>
+              <div className="flex flex-col items-center gap-4">
+                <p className="text-red-500 font-bold text-xs bg-red-50 px-4 py-3 rounded-xl border border-red-100 max-w-sm text-center leading-relaxed">
+                  {loginError}
+                </p>
+                <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 max-w-sm text-center">
+                  <p className="text-orange-800 text-[10px] font-bold uppercase tracking-widest mb-2">Importante</p>
+                  <p className="text-orange-700 text-xs font-medium leading-relaxed mb-4">
+                    Si el error persiste, intenta abrir la aplicación en una <strong>nueva pestaña</strong> o asegúrate de que el acceso a Google esté habilitado en este proyecto.
+                  </p>
+                  <a 
+                    href={window.location.href} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-block px-4 py-2 bg-orange-100 text-orange-800 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-orange-200 transition-colors"
+                  >
+                    Abrir en nueva pestaña
+                  </a>
+                </div>
+              </div>
             )}
             
-            <p className="text-slate-400 text-[10px] uppercase tracking-widest font-bold">
-              Acceso Seguro & Sincronizado
-            </p>
+            {!loginError && (
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-slate-400 text-[10px] uppercase tracking-widest font-bold">
+                  Acceso Seguro & Sincronizado
+                </p>
+                <div className={`text-[9px] font-bold uppercase tracking-tighter flex items-center gap-1.5 px-2 py-0.5 rounded-full ${
+                  connStatus === 'ok' ? 'text-emerald-500 bg-emerald-50' : 
+                  connStatus === 'offline' ? 'text-red-500 bg-red-50' : 
+                  'text-slate-400 bg-slate-100'
+                }`}>
+                  <div className={`w-1 h-1 rounded-full ${
+                    connStatus === 'ok' ? 'bg-emerald-500 animate-pulse' : 
+                    connStatus === 'offline' ? 'bg-red-500' : 
+                    'bg-slate-400 animate-bounce'
+                  }`} />
+                  {connStatus === 'ok' ? 'Servidor Conectado' : 
+                   connStatus === 'offline' ? 'Error de Conexión (Offline)' : 
+                   'Verificando Red...'}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

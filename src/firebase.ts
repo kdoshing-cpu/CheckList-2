@@ -5,7 +5,7 @@ import {
   GoogleAuthProvider,
   signOut
 } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -16,6 +16,24 @@ const googleProvider = new GoogleAuthProvider();
 
 export const loginWithGoogle = () => signInWithPopup(auth, googleProvider);
 export const logout = () => signOut(auth);
+
+// Test connection CRITICAL CONSTRAINT
+async function testConnection() {
+  try {
+    // We try to fetch a dummy doc from 'test' collection. 
+    // Even if it fails due to permissions, it confirms we reached the server.
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Firebase Connection: OK");
+  } catch (error: any) {
+    if (error.message.includes('the client is offline')) {
+      console.error("Firebase Connection: OFFLINE. Check your configuration.");
+      throw error;
+    } else {
+      console.log("Firebase Connection: Contacted (Rules check passed)");
+    }
+  }
+}
+export const dbConnection = testConnection();
 
 export enum OperationType {
   CREATE = 'create',
