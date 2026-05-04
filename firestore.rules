@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Blueprints
+    function isValidTaskProgress(data) {
+      return data.keys().hasAll(['userId', 'completedTasks', 'updatedAt'])
+        && data.keys().size() == 3
+        && data.userId == request.auth.uid
+        && data.completedTasks is map
+        && data.updatedAt == request.time;
+    }
+
+    function isValidProspection(data) {
+      return data.keys().hasAll(['userId', 'workshopId', 'workshopName', 'date', 'whatTheyBuy', 'whereTheyBuy', 'monthlySpend', 'whatIsMissing', 'satisfaction', 'notes', 'createdAt'])
+        && data.keys().size() == 11
+        && data.userId == request.auth.uid
+        && data.workshopId is string && data.workshopId.size() <= 128
+        && data.workshopName is string && data.workshopName.size() <= 200
+        && data.date is string && data.date.size() <= 128
+        && data.satisfaction is int && data.satisfaction >= 1 && data.satisfaction <= 5
+        && data.notes is string && data.notes.size() <= 5000
+        && data.createdAt == request.time;
+    }
+
+    match /userProgress/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidTaskProgress(incoming());
+      allow update: if isOwner(userId) 
+        && isValidTaskProgress(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['completedTasks', 'updatedAt']);
+    }
+
+    match /prospections/{prospectionId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidProspection(incoming());
+      allow update: if isSignedIn() 
+        && existing().userId == request.auth.uid
+        && isValidProspection(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['notes', 'satisfaction', 'whatTheyBuy', 'whereTheyBuy', 'monthlySpend', 'whatIsMissing']);
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+  }
+}

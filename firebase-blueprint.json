@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "TaskProgress": {
+      "title": "Task Progress",
+      "description": "Stores the completion status of checklist tasks for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the owner" },
+        "completedTasks": { 
+          "type": "object", 
+          "description": "Map of taskId to boolean status",
+          "additionalProperties": { "type": "boolean" }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "completedTasks", "updatedAt"]
+    },
+    "Prospection": {
+      "title": "Prospection Entry",
+      "description": "Details of a workshop visit.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "workshopId": { "type": "string" },
+        "workshopName": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "whatTheyBuy": { "type": "string" },
+        "whereTheyBuy": { "type": "string" },
+        "monthlySpend": { "type": "string" },
+        "whatIsMissing": { "type": "string" },
+        "satisfaction": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "workshopId", "workshopName", "date", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/userProgress/{userId}": {
+      "schema": "TaskProgress",
+      "description": "One document per user storing their checklist state."
+    },
+    "/prospections/{prospectionId}": {
+      "schema": "Prospection",
+      "description": "Collection of all workshop visits by all users (filtered by owner)."
+    }
+  }
+}
